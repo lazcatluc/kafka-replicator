@@ -22,7 +22,7 @@ public class KafkaReplicatorApplicationTests {
     @Autowired
     private MyEntityService myEntityService;
 
-    @Test
+    @Test(timeout = 60_000_000)
     public void receivesSentMessage() {
         MyEntity myEntity = new MyEntity();
         myEntityService.save(myEntity);
