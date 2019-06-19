@@ -1,6 +1,7 @@
 package com.endava.replicator.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.fail;
 
 import java.util.Optional;
 import org.junit.Test;
@@ -19,17 +20,19 @@ public class KafkaReplicatorApplicationTests {
 
     @Autowired
     private MyEntityRepository myEntityRepository;
+    @Autowired
+    private MyEntityService myEntityService;
 
     @Test
     public void receivesSentMessage() throws InterruptedException {
         MyEntity myEntity = new MyEntity();
-        myEntityRepository.save(myEntity);
+        myEntityService.save(myEntity);
         Thread.sleep(5000);
         Optional<MyEntity> byId = myEntityRepository.findById(myEntity.getId());
         assertThat(byId).isNotEmpty();
         myEntity = byId.get();
         myEntity.setDescription("new description");
-        myEntityRepository.save(myEntity);
+        myEntityService.save(myEntity);
         Thread.sleep(5000);
         byId = myEntityRepository.findById(myEntity.getId());
         assertThat(byId).isNotEmpty();
@@ -40,4 +43,16 @@ public class KafkaReplicatorApplicationTests {
         assertThat(myEntityRepository.findById(myEntity.getId())).isEmpty();
     }
 
+    @Test(expected = IllegalStateException.class)
+    public void doesNotSendMessageWhenTransactionIsRolledBack() throws InterruptedException {
+        MyEntity myEntity = new MyEntity();
+        try {
+            myEntityService.saveWithException(myEntity);
+        } catch (IllegalStateException ise){
+            Thread.sleep(5000);
+            Optional<MyEntity> byId = myEntityRepository.findById(myEntity.getId());
+            assertThat(byId).isEmpty();
+            throw ise;
+        }
+    }
 }

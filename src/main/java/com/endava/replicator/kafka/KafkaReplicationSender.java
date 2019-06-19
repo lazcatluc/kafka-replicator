@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import javax.transaction.Transactional;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -12,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Component
 public class KafkaReplicationSender {
@@ -31,13 +34,27 @@ public class KafkaReplicationSender {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    public void replicate(String operation, Object message) throws InterruptedException, ExecutionException, TimeoutException {
+    @Transactional
+    public void replicate(String operation, Object message) {
         try {
             Map map = objectMapper.convertValue(message, Map.class);
             String entityClassName = message.getClass().getCanonicalName();
-            kafkaTemplate.send(kafkaReplicationTopic, objectMapper.writeValueAsString(
-                    new KafkaReplicationWrapper(operation, new KafkaEntityWrapper(entityClassName, map))))
-                    .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
+            String valueAsString = objectMapper.writeValueAsString(
+                    new KafkaReplicationWrapper(operation, new KafkaEntityWrapper(entityClassName, map)));
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status == STATUS_COMMITTED) {
+                        try {
+                            kafkaTemplate.send(kafkaReplicationTopic, valueAsString)
+                                    .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
+                        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                            throw new IllegalStateException(e);
+                        }
+                    }
+                }
+            });
+
         } catch (JsonProcessingException e) {
             throw new UncheckedIOException(e);
         }
