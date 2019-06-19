@@ -35,6 +35,9 @@ public class KafkaReplicatorApplicationTests {
         assertThat(byId).isNotEmpty();
         myEntity = byId.get();
         assertThat(myEntity.getDescription()).isEqualTo("new description");
+        myEntityRepository.delete(myEntity);
+        Thread.sleep(5000);
+        assertThat(myEntityRepository.findById(myEntity.getId())).isEmpty();
     }
 
 }

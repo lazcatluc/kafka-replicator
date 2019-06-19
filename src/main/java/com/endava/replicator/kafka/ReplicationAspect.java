@@ -19,10 +19,14 @@ public class ReplicationAspect {
     }
 
     @Around("execution(* com.endava.replicator.kafka.ReplicatedJpaRepository.save(..))")
-    public void around(ProceedingJoinPoint joinPoint) {
-        LOGGER.info("Begin intercepted replication event");
+    public void aroundSave(ProceedingJoinPoint joinPoint) {
         Object savedEntity = joinPoint.getArgs()[0];
         kafkaReplicationSender.replicate("save", savedEntity);
-        LOGGER.info("End intercepted replication event");
+    }
+
+    @Around("execution(* com.endava.replicator.kafka.ReplicatedJpaRepository.delete(..))")
+    public void aroundDelete(ProceedingJoinPoint joinPoint) {
+        Object savedEntity = joinPoint.getArgs()[0];
+        kafkaReplicationSender.replicate("delete", savedEntity);
     }
 }
