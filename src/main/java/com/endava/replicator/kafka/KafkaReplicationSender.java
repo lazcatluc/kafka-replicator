@@ -37,6 +37,7 @@ public class KafkaReplicationSender {
     @Transactional
     public void replicate(String operation, Object message) {
         try {
+            LOGGER.debug("Preparing {} for {} replication", message, operation);
             Map map = objectMapper.convertValue(message, Map.class);
             String entityClassName = message.getClass().getCanonicalName();
             String valueAsString = objectMapper.writeValueAsString(
@@ -46,11 +47,14 @@ public class KafkaReplicationSender {
                 public void afterCompletion(int status) {
                     if (status == STATUS_COMMITTED) {
                         try {
+                            LOGGER.debug("Sending {} to replication", valueAsString);
                             kafkaTemplate.send(kafkaReplicationTopic, valueAsString)
                                     .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
                         } catch (InterruptedException | ExecutionException | TimeoutException e) {
                             throw new IllegalStateException(e);
                         }
+                    } else {
+                        LOGGER.debug("Not sending {} to replication because transaction is in status {}", valueAsString, status);
                     }
                 }
             });

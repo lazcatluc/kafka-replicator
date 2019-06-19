@@ -1,7 +1,6 @@
 package com.endava.replicator.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.fail;
 
 import java.util.Optional;
 import org.junit.Test;
@@ -48,7 +47,7 @@ public class KafkaReplicatorApplicationTests {
         MyEntity myEntity = new MyEntity();
         try {
             myEntityService.saveWithException(myEntity);
-        } catch (IllegalStateException ise){
+        } catch (IllegalStateException ise) {
             Thread.sleep(5000);
             Optional<MyEntity> byId = myEntityRepository.findById(myEntity.getId());
             assertThat(byId).isEmpty();
