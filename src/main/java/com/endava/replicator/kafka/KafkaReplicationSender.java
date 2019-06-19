@@ -2,16 +2,16 @@ package com.endava.replicator.kafka;
 
 import java.io.UncheckedIOException;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
-import org.springframework.util.concurrent.ListenableFuture;
-import org.springframework.util.concurrent.ListenableFutureCallback;
 
 @Component
 public class KafkaReplicationSender {
@@ -20,32 +20,24 @@ public class KafkaReplicationSender {
     private final String kafkaReplicationTopic;
     private final ObjectMapper objectMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final long kafkaReplicationTimeout;
 
     public KafkaReplicationSender(@Value("${kafka.replication.topic}") String kafkaReplicationTopic,
+                                  @Value("${kafka.replication.timeout.seconds}") long kafkaReplicationTimeout,
                                   ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate) {
         this.kafkaReplicationTopic = kafkaReplicationTopic;
+        this.kafkaReplicationTimeout = kafkaReplicationTimeout;
         this.objectMapper = objectMapper;
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    public void replicate(String operation, Object message) {
+    public void replicate(String operation, Object message) throws InterruptedException, ExecutionException, TimeoutException {
         try {
             Map map = objectMapper.convertValue(message, Map.class);
             String entityClassName = message.getClass().getCanonicalName();
-            ListenableFuture<SendResult<String, String>> future = kafkaTemplate
-                    .send(kafkaReplicationTopic, objectMapper.writeValueAsString(
-                            new KafkaReplicationWrapper(operation, new KafkaEntityWrapper(entityClassName, map))));
-            future.addCallback(new ListenableFutureCallback<SendResult<String, String>>() {
-                @Override
-                public void onSuccess(SendResult<String, String> result) {
-                    LOGGER.info("Sent " + message + " with offset " + result.getRecordMetadata().offset() + " for replication");
-                }
-
-                @Override
-                public void onFailure(Throwable ex) {
-                    LOGGER.error("Unable to send " + message + " for replication", ex);
-                }
-            });
+            kafkaTemplate.send(kafkaReplicationTopic, objectMapper.writeValueAsString(
+                    new KafkaReplicationWrapper(operation, new KafkaEntityWrapper(entityClassName, map))))
+                    .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
         } catch (JsonProcessingException e) {
             throw new UncheckedIOException(e);
         }
