@@ -28,12 +28,13 @@ public class KafkaReplicationSender {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    public void replicate(Object message) {
+    public void replicate(String operation, Object message) {
         try {
             Map map = objectMapper.convertValue(message, Map.class);
             String entityClassName = message.getClass().getCanonicalName();
             ListenableFuture<SendResult<String, String>> future = kafkaTemplate
-                    .send(kafkaReplicationTopic, objectMapper.writeValueAsString(new KafkaEntityWrapper(entityClassName, map)));
+                    .send(kafkaReplicationTopic, objectMapper.writeValueAsString(
+                            new KafkaReplicationWrapper(operation, new KafkaEntityWrapper(entityClassName, map))));
             future.addCallback(new ListenableFutureCallback<SendResult<String, String>>() {
                 @Override
                 public void onSuccess(SendResult<String, String> result) {

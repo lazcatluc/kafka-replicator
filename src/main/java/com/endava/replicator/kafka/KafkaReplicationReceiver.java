@@ -2,6 +2,8 @@ package com.endava.replicator.kafka;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.util.ReflectionUtils;
 
 @Component
 public class KafkaReplicationReceiver {
@@ -23,24 +26,26 @@ public class KafkaReplicationReceiver {
         this.myEntitiesRepositories = myEntitiesRepositories;
     }
 
-    @SuppressWarnings("unchecked")
     @KafkaListener(topics = "${kafka.replication.topic}")
     public void listen(String message) {
         LOGGER.info("Received " + message + " for replication");
         try {
-            KafkaEntityWrapper kafkaEntityWrapper = objectMapper.readValue(message, KafkaEntityWrapper.class);
+            KafkaReplicationWrapper kafkaReplicationWrapper = objectMapper.readValue(message, KafkaReplicationWrapper.class);
+            String jpaMethod = kafkaReplicationWrapper.getOperation() + "WithoutReplicating";
+            KafkaEntityWrapper kafkaEntityWrapper = kafkaReplicationWrapper.getKafkaEntityWrapper();
             Class<?> entityClass = Class.forName(kafkaEntityWrapper.getEntityClassName());
             Object entity = objectMapper.convertValue(kafkaEntityWrapper.getEntity(), entityClass);
             String repositoryName = entityClass.getSimpleName() + "Repository";
             ReplicatedJpaRepository replicatedJpaRepository = myEntitiesRepositories.stream().filter(repository ->
                     Arrays.stream(repository.getClass().getGenericInterfaces()).anyMatch(type ->
                             type.getTypeName().endsWith("." + repositoryName))).findAny()
-                    .orElseThrow(() -> new IllegalArgumentException("Cannot find repository for class " + entityClass));
-            replicatedJpaRepository.saveWithoutReplicating(entity);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        } catch (ClassNotFoundException e) {
+                    .orElseThrow(() -> new ExceptionInInitializerError("Cannot find repository for class " + entityClass));
+            Method repositoryMethod = ReplicatedJpaRepository.class.getMethod(jpaMethod, Object.class);
+            repositoryMethod.invoke(replicatedJpaRepository, entity);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
             throw new ExceptionInInitializerError(e);
+        } catch (IOException | InvocationTargetException e) {
+            throw new IllegalArgumentException(message, e);
         }
     }
 }

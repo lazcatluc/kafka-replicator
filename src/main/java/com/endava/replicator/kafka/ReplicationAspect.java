@@ -22,7 +22,7 @@ public class ReplicationAspect {
     public void around(ProceedingJoinPoint joinPoint) {
         LOGGER.info("Begin intercepted replication event");
         Object savedEntity = joinPoint.getArgs()[0];
-        kafkaReplicationSender.replicate(savedEntity);
+        kafkaReplicationSender.replicate("save", savedEntity);
         LOGGER.info("End intercepted replication event");
     }
 }

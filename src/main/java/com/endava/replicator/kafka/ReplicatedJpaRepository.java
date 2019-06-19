@@ -10,4 +10,11 @@ public interface ReplicatedJpaRepository<T, ID> extends JpaRepository<T, ID> {
         return save(readValue);
     }
 
+    default void deleteWithoutReplicating(T entity) {
+        delete(entity);
+    }
+
+    default void deleteByIdWithoutReplicating(ID id) {
+        deleteById(id);
+    }
 }
