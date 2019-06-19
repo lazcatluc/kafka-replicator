@@ -23,32 +23,28 @@ public class KafkaReplicatorApplicationTests {
     private MyEntityService myEntityService;
 
     @Test
-    public void receivesSentMessage() throws InterruptedException {
+    public void receivesSentMessage() {
         MyEntity myEntity = new MyEntity();
         myEntityService.save(myEntity);
-        Thread.sleep(5000);
         Optional<MyEntity> byId = myEntityRepository.findById(myEntity.getId());
         assertThat(byId).isNotEmpty();
         myEntity = byId.get();
         myEntity.setDescription("new description");
         myEntityService.save(myEntity);
-        Thread.sleep(5000);
         byId = myEntityRepository.findById(myEntity.getId());
         assertThat(byId).isNotEmpty();
         myEntity = byId.get();
         assertThat(myEntity.getDescription()).isEqualTo("new description");
         myEntityRepository.delete(myEntity);
-        Thread.sleep(5000);
         assertThat(myEntityRepository.findById(myEntity.getId())).isEmpty();
     }
 
     @Test(expected = IllegalStateException.class)
-    public void doesNotSendMessageWhenTransactionIsRolledBack() throws InterruptedException {
+    public void doesNotSendMessageWhenTransactionIsRolledBack() {
         MyEntity myEntity = new MyEntity();
         try {
             myEntityService.saveWithException(myEntity);
         } catch (IllegalStateException ise) {
-            Thread.sleep(5000);
             Optional<MyEntity> byId = myEntityRepository.findById(myEntity.getId());
             assertThat(byId).isEmpty();
             throw ise;

@@ -24,14 +24,17 @@ public class KafkaReplicationSender {
     private final ObjectMapper objectMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final long kafkaReplicationTimeout;
+    private final KafkaReplicationConfirmationSubscriber kafkaReplicationConfirmationSubscriber;
 
     public KafkaReplicationSender(@Value("${kafka.replication.topic}") String kafkaReplicationTopic,
                                   @Value("${kafka.replication.timeout.seconds}") long kafkaReplicationTimeout,
-                                  ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate) {
+                                  ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate,
+                                  KafkaReplicationConfirmationSubscriber kafkaReplicationConfirmationSubscriber) {
         this.kafkaReplicationTopic = kafkaReplicationTopic;
         this.kafkaReplicationTimeout = kafkaReplicationTimeout;
         this.objectMapper = objectMapper;
         this.kafkaTemplate = kafkaTemplate;
+        this.kafkaReplicationConfirmationSubscriber = kafkaReplicationConfirmationSubscriber;
     }
 
     @Transactional
@@ -40,8 +43,9 @@ public class KafkaReplicationSender {
             LOGGER.debug("Preparing {} for {} replication", message, operation);
             Map map = objectMapper.convertValue(message, Map.class);
             String entityClassName = message.getClass().getCanonicalName();
+            KafkaEntityWrapper kafkaEntityWrapper = new KafkaEntityWrapper(entityClassName, map);
             String valueAsString = objectMapper.writeValueAsString(
-                    new KafkaReplicationWrapper(operation, new KafkaEntityWrapper(entityClassName, map)));
+                    new KafkaReplicationWrapper(operation, kafkaEntityWrapper));
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCompletion(int status) {
@@ -50,6 +54,7 @@ public class KafkaReplicationSender {
                             LOGGER.debug("Sending {} to replication", valueAsString);
                             kafkaTemplate.send(kafkaReplicationTopic, valueAsString)
                                     .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
+                            kafkaReplicationConfirmationSubscriber.waitForConfirmation(kafkaEntityWrapper);
                         } catch (InterruptedException | ExecutionException | TimeoutException e) {
                             throw new IllegalStateException(e);
                         }
@@ -58,7 +63,6 @@ public class KafkaReplicationSender {
                     }
                 }
             });
-
         } catch (JsonProcessingException e) {
             throw new UncheckedIOException(e);
         }
