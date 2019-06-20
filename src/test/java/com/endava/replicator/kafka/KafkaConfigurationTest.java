@@ -13,10 +13,10 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.junit4.SpringRunner;
 
 @RunWith(SpringRunner.class)
-@SpringBootTest
+@SpringBootTest(classes = {KafkaConfiguration.class, KafkaConfigurationTest.class})
 @EmbeddedKafka(brokerProperties = {"listeners=PLAINTEXT://${kafka.bootstrapAddress}", "port=${kafka.port}"})
 @Configuration
-public class KafkaReplicatorApplicationTests {
+public class KafkaConfigurationTest {
 
     @Autowired
     private MyEntityRepository myEntityRepository;
