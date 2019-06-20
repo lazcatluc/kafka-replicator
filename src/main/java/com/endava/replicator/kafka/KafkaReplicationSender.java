@@ -1,16 +1,19 @@
 package com.endava.replicator.kafka;
 
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import javax.persistence.Id;
 import javax.transaction.Transactional;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.util.ReflectionUtils;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -51,8 +54,9 @@ public class KafkaReplicationSender {
                 public void afterCompletion(int status) {
                     if (status == STATUS_COMMITTED) {
                         try {
-                            LOGGER.debug("Sending {} to replication", valueAsString);
-                            kafkaTemplate.send(kafkaReplicationTopic, valueAsString)
+                            String kafkaKey = findKafkaKey(message);
+                            LOGGER.debug("Sending [{} : {}] to replication", kafkaKey, valueAsString);
+                            kafkaTemplate.send(kafkaReplicationTopic, kafkaKey, valueAsString)
                                     .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
                             kafkaReplicationConfirmationSubscriber.waitForConfirmation(kafkaEntityWrapper);
                         } catch (InterruptedException | ExecutionException | TimeoutException e) {
@@ -66,5 +70,18 @@ public class KafkaReplicationSender {
         } catch (JsonProcessingException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private String findKafkaKey(Object message) {
+        Field idField = ReflectionUtils.findField(message.getClass(),
+                new ReflectionUtils.AnnotationFieldFilter(Id.class));
+        if (idField != null) {
+            org.springframework.util.ReflectionUtils.makeAccessible(idField);
+            Object field = org.springframework.util.ReflectionUtils.getField(idField, message);
+            if (field != null) {
+                return field.toString();
+            }
+        }
+        return String.valueOf(message.hashCode());
     }
 }
