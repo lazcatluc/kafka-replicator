@@ -17,4 +17,24 @@ public interface ReplicatedJpaRepository<T, ID> extends JpaRepository<T, ID> {
     default void deleteByIdWithoutReplicating(ID id) {
         deleteById(id);
     }
+
+    @Override
+    default <S extends T> S saveAndFlush(S s) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    default void deleteInBatch(Iterable<T> iterable) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    default void deleteAllInBatch() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    default void deleteAll() {
+        throw new UnsupportedOperationException();
+    }
 }

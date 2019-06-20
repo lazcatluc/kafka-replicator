@@ -2,6 +2,7 @@ package com.endava.replicator.kafka;
 
 import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -42,10 +43,24 @@ public class KafkaReplicationSender {
 
     @Transactional
     public void replicate(String operation, Object message) {
+        String entityClassName = message.getClass().getCanonicalName();
+        replicate(operation, message, entityClassName);
+    }
+
+    @Transactional
+    public void replicateById(String operation, Class<?> clazz, Object id) {
+        Field idField = getIdField(clazz);
+        if (idField == null) {
+            throw new IllegalStateException("No id field found for " + clazz);
+        }
+        Map message = Collections.singletonMap(idField.getName(), id);
+        replicate(operation, message, clazz.getCanonicalName());
+    }
+
+    private void replicate(String operation, Object message, String entityClassName) {
         try {
             LOGGER.debug("Preparing {} for {} replication", message, operation);
             Map map = objectMapper.convertValue(message, Map.class);
-            String entityClassName = message.getClass().getCanonicalName();
             KafkaEntityWrapper kafkaEntityWrapper = new KafkaEntityWrapper(entityClassName, map);
             String valueAsString = objectMapper.writeValueAsString(
                     new KafkaReplicationWrapper(operation, kafkaEntityWrapper));
@@ -73,8 +88,7 @@ public class KafkaReplicationSender {
     }
 
     private String findKafkaKey(Object message) {
-        Field idField = ReflectionUtils.findField(message.getClass(),
-                new ReflectionUtils.AnnotationFieldFilter(Id.class));
+        Field idField = getIdField(message.getClass());
         if (idField != null) {
             org.springframework.util.ReflectionUtils.makeAccessible(idField);
             Object field = org.springframework.util.ReflectionUtils.getField(idField, message);
@@ -83,5 +97,9 @@ public class KafkaReplicationSender {
             }
         }
         return String.valueOf(message.hashCode());
+    }
+
+    private Field getIdField(Class<?> clazz) {
+        return ReflectionUtils.findField(clazz, new ReflectionUtils.AnnotationFieldFilter(Id.class));
     }
 }

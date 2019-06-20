@@ -2,6 +2,7 @@ package com.endava.replicator.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Collections;
 import java.util.Optional;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -49,5 +50,25 @@ public class KafkaReplicatorApplicationTests {
             assertThat(byId).isEmpty();
             throw ise;
         }
+    }
+
+    @Test
+    public void savesAllAndDeletesAll() {
+        MyEntity myEntity = new MyEntity();
+        myEntityService.saveAll(Collections.singleton(myEntity));
+        Optional<MyEntity> byId = myEntityRepository.findById(myEntity.getId());
+        assertThat(byId).isNotEmpty();
+        myEntityRepository.deleteAll(Collections.singleton(myEntity));
+        assertThat(myEntityRepository.findById(myEntity.getId())).isEmpty();
+    }
+
+    @Test
+    public void canDeleteById() {
+        MyEntity myEntity = new MyEntity();
+        myEntityService.saveAll(Collections.singleton(myEntity));
+        Optional<MyEntity> byId = myEntityRepository.findById(myEntity.getId());
+        assertThat(byId).isNotEmpty();
+        myEntityRepository.deleteById(byId.get().getId());
+        assertThat(myEntityRepository.findById(myEntity.getId())).isEmpty();
     }
 }
