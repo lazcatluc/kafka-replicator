@@ -41,7 +41,7 @@ public class KafkaReplicationFailureSender {
             String valueAsString = objectMapper.writeValueAsString(
                     new ReplicationStatus(InetAddress.getLocalHost().getHostName(),
                             baos.toString(StandardCharsets.UTF_8.toString())));
-            kafkaTemplate.send(kafkaReplicationFailureTopic + "-" + kafkaEntityWrapper.getId(), valueAsString)
+            kafkaTemplate.send(kafkaReplicationFailureTopic, kafkaEntityWrapper.getId(), valueAsString)
                     .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
         } catch (IOException e) {
             throw new UncheckedIOException(e);

@@ -34,7 +34,7 @@ public class KafkaReplicationSuccessSender {
         try {
             String ok = objectMapper.writeValueAsString(
                     new ReplicationStatus(InetAddress.getLocalHost().getHostName(), "OK"));
-            kafkaTemplate.send(kafkaReplicationSuccessTopic + "-" + kafkaEntityWrapper.getId(), ok)
+            kafkaTemplate.send(kafkaReplicationSuccessTopic, kafkaEntityWrapper.getId(), ok)
                     .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
         } catch (UnknownHostException | JsonProcessingException e) {
             throw new UncheckedIOException(e);

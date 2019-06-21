@@ -1,15 +1,17 @@
 package com.endava.replicator.kafka;
 
-import java.time.Duration;
-import java.util.Arrays;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,39 +19,46 @@ public class KafkaReplicationConfirmationSubscriber {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaReplicationConfirmationSubscriber.class);
 
-    private final String kafkaReplicationSuccessTopic;
-    private final String kafkaReplicationFailureTopic;
     private final long kafkaReplicationTimeout;
-    private final ConsumerFactory<String, String> consumerFactory;
+    private final int kafkaReplicationConfirmations;
+    private final Map<String, CountDownLatch> confirmationHook = new ConcurrentHashMap<>();
 
-    public KafkaReplicationConfirmationSubscriber(@Value("${kafka.replication.success.topic}") String kafkaReplicationSuccessTopic,
-                                                  @Value("${kafka.replication.failure.topic}") String kafkaReplicationFailureTopic,
-                                                  @Value("${kafka.replication.timeout.seconds}") long kafkaReplicationTimeout,
-                                                  ConsumerFactory<String, String> consumerFactory) {
-        this.kafkaReplicationSuccessTopic = kafkaReplicationSuccessTopic;
-        this.kafkaReplicationFailureTopic = kafkaReplicationFailureTopic;
+    public KafkaReplicationConfirmationSubscriber(@Value("${kafka.replication.timeout.seconds}") long kafkaReplicationTimeout,
+                                                  @Value("${kafka.replication.confirmations}") int kafkaReplicationConfirmations) {
         this.kafkaReplicationTimeout = kafkaReplicationTimeout;
-        this.consumerFactory = consumerFactory;
+        this.kafkaReplicationConfirmations = kafkaReplicationConfirmations;
+    }
+
+    @KafkaListener(topics = "${kafka.replication.success.topic}")
+    public void receiveSuccess(@Header(KafkaHeaders.RECEIVED_MESSAGE_KEY) String key) {
+        confirmationHook.getOrDefault(key, new CountDownLatch(1)).countDown();
+    }
+
+    @KafkaListener(topics = "${kafka.replication.failure.topic}")
+    public void receiveFailure(@Header(KafkaHeaders.RECEIVED_MESSAGE_KEY) String key, @Payload String message) {
+        LOGGER.error("Replication error for {}: {}", key, message);
+        confirmationHook.getOrDefault(key, new CountDownLatch(1)).countDown();
+    }
+
+    public void prepareForConfirmation(KafkaEntityWrapper kafkaEntityWrapper) {
+        CountDownLatch confirmationLatch = new CountDownLatch(kafkaReplicationConfirmations);
+        String wrapperId = kafkaEntityWrapper.getId();
+        confirmationHook.put(wrapperId, confirmationLatch);
     }
 
     public void waitForConfirmation(KafkaEntityWrapper kafkaEntityWrapper) {
-        try (Consumer<String, String> consumer = consumerFactory.createConsumer()) {
-            String wrapperId = kafkaEntityWrapper.getId();
-            consumer.subscribe(Arrays.asList(kafkaReplicationSuccessTopic + "-" + wrapperId,
-                    kafkaReplicationFailureTopic + "-" + wrapperId));
-            LOGGER.debug("Waiting for replication confirmation of " + kafkaEntityWrapper);
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(kafkaReplicationTimeout));
-            if (records.isEmpty()) {
+        CountDownLatch confirmationLatch = confirmationHook.get(kafkaEntityWrapper.getId());
+        try {
+            confirmationLatch.await(kafkaReplicationTimeout, TimeUnit.SECONDS);
+            if (confirmationLatch.getCount() > 0) {
                 throw new TimeoutException();
             }
-            for (ConsumerRecord<String, String> successRecord : records.records(
-                    kafkaReplicationSuccessTopic + "-" + wrapperId)) {
-                LOGGER.debug("Found successful replication for {}: {}", kafkaEntityWrapper, successRecord);
-            }
-            for (ConsumerRecord<String, String> failureRecord : records.records(
-                    kafkaReplicationFailureTopic + "-" + wrapperId)) {
-                throw new IllegalStateException(failureRecord.value());
-            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
+    }
+
+    public void endConfirmation(KafkaEntityWrapper kafkaEntityWrapper) {
+        confirmationHook.remove(kafkaEntityWrapper.getId());
     }
 }

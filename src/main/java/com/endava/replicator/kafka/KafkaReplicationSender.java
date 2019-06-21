@@ -71,11 +71,14 @@ public class KafkaReplicationSender {
                         try {
                             String kafkaKey = findKafkaKey(message);
                             LOGGER.debug("Sending [{} : {}] to replication", kafkaKey, valueAsString);
+                            kafkaReplicationConfirmationSubscriber.prepareForConfirmation(kafkaEntityWrapper);
                             kafkaTemplate.send(kafkaReplicationTopic, kafkaKey, valueAsString)
                                     .get(kafkaReplicationTimeout, TimeUnit.SECONDS);
                             kafkaReplicationConfirmationSubscriber.waitForConfirmation(kafkaEntityWrapper);
                         } catch (InterruptedException | ExecutionException | TimeoutException e) {
                             throw new IllegalStateException(e);
+                        } finally {
+                            kafkaReplicationConfirmationSubscriber.endConfirmation(kafkaEntityWrapper);
                         }
                     } else {
                         LOGGER.debug("Not sending {} to replication because transaction is in status {}", valueAsString, status);
