@@ -4,19 +4,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Collections;
 import java.util.Optional;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.util.TestPropertyValues;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.test.context.EmbeddedKafka;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.testcontainers.containers.KafkaContainer;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest(classes = {KafkaConfiguration.class, KafkaConfigurationTest.class})
-@EmbeddedKafka(brokerProperties = {"listeners=PLAINTEXT://${kafka.bootstrapAddress}", "port=${kafka.port}"})
 @Configuration
+@ContextConfiguration(initializers = {KafkaConfigurationTest.Initializer.class})
 public class KafkaConfigurationTest {
+
+    @ClassRule
+    public static KafkaContainer kafkaContainer = new KafkaContainer();
+
+    static class Initializer
+            implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+        public void initialize(ConfigurableApplicationContext configurableApplicationContext) {
+            TestPropertyValues.of(
+                    "kafka.port=" + kafkaContainer.getFirstMappedPort(),
+                    "kafka.bootstrapAddress=" + kafkaContainer.getBootstrapServers()
+            ).applyTo(configurableApplicationContext.getEnvironment());
+        }
+    }
 
     @Autowired
     private MyEntityRepository myEntityRepository;
